@@ -93,7 +93,13 @@ class DatabaseSeeder extends Seeder
             DossierEmploye::create([
                 'employe_id' => $employe->id,
                 'numero' => 'DOS-' . str_pad($employe->id, 4, '0', STR_PAD_LEFT),
-                'statut' => 'actif'
+                'statut' => 'actif',
+                'cin' => strtoupper($faker->bothify('??######')), // Ex: AB123456
+                'sexe' => $faker->randomElement(['H', 'F']),
+                'date_naissance' => $faker->dateTimeBetween('-50 years', '-20 years'),
+                'situation_familiale' => $faker->randomElement(['celibataire', 'marie', 'divorce', 'veuf']),
+                'nombre_enfants' => $faker->numberBetween(0, 5),
+                'telephone' => $faker->phoneNumber,
             ]);
 
             $salaire = $faker->randomFloat(2, 4000, 20000);

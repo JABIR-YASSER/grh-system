@@ -25,6 +25,48 @@ class CongeResource extends Resource
     protected static ?string $navigationGroup = 'Gestion RH';
     protected static ?string $navigationLabel = 'Congés & Absences';
 
+    public static function getNavigationBadge(): ?string
+    {
+        /** @var \App\Models\User|null $user */
+        $user = \Illuminate\Support\Facades\Auth::user();
+
+        if ($user && $user->hasRole('admin')) {
+            $compteur = static::getModel()::where('statut', 'en_attente')->count();
+            return $compteur > 0 ? (string) $compteur : null;
+        }
+
+        return null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning'; 
+    }
+
+    public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        /** @var \App\Models\User|null $user */
+        $user = \Illuminate\Support\Facades\Auth::user();
+
+        if ($user && !$user->hasRole('admin') && $record->statut !== 'en_attente') {
+            return false;
+        }
+
+        return true;
+    }
+
+    public static function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        /** @var \App\Models\User|null $user */
+        $user = \Illuminate\Support\Facades\Auth::user();
+
+        if ($user && !$user->hasRole('admin') && $record->statut !== 'en_attente') {
+            return false;
+        }
+
+        return true;
+    }
+
     public static function form(Form $form): Form
     {
         return $form
@@ -37,18 +79,15 @@ class CongeResource extends Resource
                             ->searchable()
                             ->preload()
                             ->required()
-                            // Sélection automatique de l'employé connecté
                             ->default(function () {
                                 /** @var \App\Models\User|null $user */
                                 $user = \Illuminate\Support\Facades\Auth::user();
                                 
-                                // Si c'est un employé normal, on trouve son ID d'employé
                                 if ($user && !$user->hasRole('admin')) {
                                     return \App\Models\Employe::where('user_id', $user->id)->value('id');
                                 }
                                 return null;
                             })
-                            // Griser le champ pour les employés (mais pas pour l'admin)
                             ->disabled(function () {
                                 /** @var \App\Models\User|null $user */
                                 $user = \Illuminate\Support\Facades\Auth::user();
@@ -68,7 +107,7 @@ class CongeResource extends Resource
 
                         DatePicker::make('date_debut')->required(),
                         DatePicker::make('date_fin')->required()
-                            ->afterOrEqual('date_debut'), // Validation logique
+                            ->afterOrEqual('date_debut'), 
                             
                         Textarea::make('motif')
                             ->columnSpanFull(),
@@ -107,6 +146,7 @@ class CongeResource extends Resource
                     ->searchable()
                     ->sortable(),
 
+                // 👇 Optimisation : Triable et Recherchable 👇
                 TextColumn::make('type')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -114,12 +154,16 @@ class CongeResource extends Resource
                         'maladie' => 'danger',
                         'sans_solde' => 'warning',
                         default => 'gray',
-                    }),
+                    })
+                    ->searchable()
+                    ->sortable(),
 
-                TextColumn::make('date_debut')->date('d/m/Y')->label('Début'),
-                TextColumn::make('date_fin')->date('d/m/Y')->label('Fin'),
-                TextColumn::make('jours')->suffix(' Jours')->label('Durée'),
+                // 👇 Optimisation : Dates triables 👇
+                TextColumn::make('date_debut')->date('d/m/Y')->label('Début')->sortable(),
+                TextColumn::make('date_fin')->date('d/m/Y')->label('Fin')->sortable(),
+                TextColumn::make('jours')->suffix(' Jours')->label('Durée')->sortable(),
 
+                // 👇 Optimisation : Statut triable et recherchable 👇
                 TextColumn::make('statut')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -131,7 +175,9 @@ class CongeResource extends Resource
                         'accepte' => 'heroicon-o-check-circle',
                         'refuse' => 'heroicon-o-x-circle',
                         'en_attente' => 'heroicon-o-clock',
-                    }),
+                    })
+                    ->searchable()
+                    ->sortable(),
             ])
             ->filters([
                 SelectFilter::make('statut')
@@ -139,10 +185,21 @@ class CongeResource extends Resource
                         'en_attente' => 'En attente',
                         'accepte' => 'Validés',
                         'refuse' => 'Refusés',
-                    ]),
+                    ])
+                    ->label('Filtrer par statut'),
+                    
+                // 👇 Nouveau filtre par Type de congé 👇
+                SelectFilter::make('type')
+                    ->options([
+                        'paye' => 'Congé Payé',
+                        'maladie' => 'Maladie',
+                        'sans_solde' => 'Sans Solde',
+                        'maternite' => 'Maternité',
+                        'recuperation' => 'Récupération',
+                    ])
+                    ->label('Filtrer par type'),
             ])
             ->actions([
-                // Bouton Valider (Vert) avec confirmation en Français
                 Tables\Actions\Action::make('valider')
                     ->icon('heroicon-o-check')
                     ->color('success')
@@ -152,14 +209,12 @@ class CongeResource extends Resource
                     ->modalSubmitActionLabel('Oui, valider')
                     ->modalCancelActionLabel('Annuler')
                     ->action(fn (Conge $record) => $record->update(['statut' => 'accepte']))
-                    // 👇 MISE À JOUR : Visibilité réservée aux admins
                     ->visible(function (Conge $record) {
                         /** @var \App\Models\User|null $user */
                         $user = \Illuminate\Support\Facades\Auth::user();
                         return $record->statut === 'en_attente' && $user && $user->hasRole('admin');
                     }),
 
-                // Bouton Refuser (Rouge) avec confirmation en Français
                 Tables\Actions\Action::make('refuser')
                     ->icon('heroicon-o-x-mark')
                     ->color('danger')
@@ -169,7 +224,6 @@ class CongeResource extends Resource
                     ->modalSubmitActionLabel('Oui, refuser')
                     ->modalCancelActionLabel('Annuler')
                     ->action(fn (Conge $record) => $record->update(['statut' => 'refuse']))
-                    // 👇 MISE À JOUR : Visibilité réservée aux admins
                     ->visible(function (Conge $record) {
                         /** @var \App\Models\User|null $user */
                         $user = \Illuminate\Support\Facades\Auth::user();
@@ -178,7 +232,9 @@ class CongeResource extends Resource
 
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
-            ]);
+            ])
+            // 👇 Tri par défaut : les plus récents en haut 👇
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getEloquentQuery(): Builder
@@ -188,9 +244,7 @@ class CongeResource extends Resource
         /** @var \App\Models\User|null $user */
         $user = \Illuminate\Support\Facades\Auth::user();
 
-        // Si l'utilisateur est connecté mais N'EST PAS admin (donc c'est un employé)
         if ($user && !$user->hasRole('admin')) {
-            // On filtre pour ne garder que SES propres congés
             $query->whereHas('employe', function ($q) use ($user) {
                 $q->where('user_id', $user->id);
             });

@@ -6,25 +6,35 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('dossier_employes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('employe_id')->constrained()->onDelete('cascade');
             
-            $table->string('numero')->unique(); // Numéro de dossier physique ou archivage
-            $table->string('statut')->default('actif'); // en_conges, actif, suspendu, etc.
-            
+            // --- Identité ---
+            $table->string('numero')->unique(); 
+            $table->string('cin')->unique();
+            $table->string('sexe');
+            $table->date('date_naissance')->nullable();
+            $table->string('situation_familiale');
+            $table->integer('nombre_enfants')->default(0);
+
+            // --- Contact ---
+            $table->string('telephone');
+            $table->string('email_personnel')->nullable();
+            $table->text('adresse')->nullable();
+            $table->string('contact_urgence')->nullable();
+
+            // --- Administratif & Paie ---
+            $table->string('rib', 24)->nullable();
+            $table->string('cnss')->nullable();
+            $table->string('statut')->default('actif');
+
             $table->timestamps();
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('dossier_employes');

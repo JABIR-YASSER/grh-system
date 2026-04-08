@@ -67,16 +67,26 @@ class PaieResource extends Resource
                                 }
                             }),
 
+                        // 👇 Champ fixe et verrouillé sur le mois précédent 👇
                         TextInput::make('mois')
-                            ->default(now()->format('m'))
-                            ->required()
-                            ->numeric()
-                            ->minValue(1)->maxValue(12),
+                            ->label('Mois de référence')
+                            ->default(function () {
+                                $nomsMois = [
+                                    1 => 'Janvier', 2 => 'Février', 3 => 'Mars', 4 => 'Avril',
+                                    5 => 'Mai', 6 => 'Juin', 7 => 'Juillet', 8 => 'Août',
+                                    9 => 'Septembre', 10 => 'Octobre', 11 => 'Novembre', 12 => 'Décembre'
+                                ];
+                                return $nomsMois[now()->subMonth()->month];
+                            })
+                            ->readOnly()
+                            ->required(),
                             
+                        // 👇 Champ fixe et verrouillé sur l'année correspondante 👇
                         TextInput::make('annee')
-                            ->default(now()->format('Y'))
-                            ->required()
-                            ->numeric(),
+                            ->label('Année')
+                            ->default(now()->subMonth()->year)
+                            ->readOnly()
+                            ->required(),
                             
                         Select::make('statut')
                             ->options([
@@ -124,18 +134,27 @@ class PaieResource extends Resource
                     ->searchable()
                     ->sortable(),
 
-                TextColumn::make('mois')->label('Mois'),
-                TextColumn::make('annee')->label('Année'),
+                TextColumn::make('mois')
+                    ->label('Mois')
+                    ->searchable()
+                    ->sortable(),
+                    
+                TextColumn::make('annee')
+                    ->label('Année')
+                    ->searchable()
+                    ->sortable(),
 
                 TextColumn::make('salaire_brut')
                     ->money('mad')
-                    ->label('Brut'),
+                    ->label('Brut')
+                    ->sortable(),
 
                 TextColumn::make('net_a_payer')
                     ->money('mad')
                     ->weight('bold')
                     ->color('success')
-                    ->label('Net à Payer'),
+                    ->label('Net à Payer')
+                    ->sortable(),
 
                 TextColumn::make('statut')
                     ->badge()
@@ -144,11 +163,19 @@ class PaieResource extends Resource
                         'en_attente' => 'warning',
                         'annule' => 'danger',
                         default => 'gray',
-                    }),
+                    })
+                    ->searchable()
+                    ->sortable(),
             ])
-            ->filters([])
+            ->filters([
+                Tables\Filters\SelectFilter::make('statut')
+                    ->options([
+                        'en_attente' => 'En attente',
+                        'paye' => 'Payé',
+                    ])
+                    ->label('Filtrer par statut'),
+            ])
             ->actions([
-                // Bouton Télécharger PDF
                 Tables\Actions\Action::make('pdf')
                     ->label('Bulletin')
                     ->icon('heroicon-o-printer')
@@ -163,10 +190,10 @@ class PaieResource extends Resource
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
-    // 👇 1. SÉCURITÉ : Filtrer les bulletins affichés 👇
     public static function getEloquentQuery(): Builder
     {
         $query = parent::getEloquentQuery();
@@ -183,7 +210,6 @@ class PaieResource extends Resource
         return $query;
     }
 
-    // 👇 2. SÉCURITÉ : Bloquer la création pour les employés 👇
     public static function canCreate(): bool
     {
         /** @var \App\Models\User|null $user */
@@ -191,7 +217,6 @@ class PaieResource extends Resource
         return $user ? $user->hasRole('admin') : false;
     }
 
-    // 👇 3. SÉCURITÉ : Bloquer la modification pour les employés 👇
     public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
     {
         /** @var \App\Models\User|null $user */
@@ -199,7 +224,6 @@ class PaieResource extends Resource
         return $user ? $user->hasRole('admin') : false;
     }
 
-    // 👇 4. SÉCURITÉ : Bloquer la suppression pour les employés 👇
     public static function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
     {
         /** @var \App\Models\User|null $user */

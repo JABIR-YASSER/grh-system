@@ -91,11 +91,13 @@ class ContratResource extends Resource
                     ->sortable()
                     ->badge(),
 
-                // Astuce : On récupère le Nom de l'user à travers l'employé
+                // 👇 Optimisation : Rendu triable 👇
                 TextColumn::make('employe.user.nom')
                     ->label('Nom Employé')
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable(),
 
+                // 👇 Optimisation : Rendu recherchable et triable 👇
                 TextColumn::make('type')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -104,20 +106,26 @@ class ContratResource extends Resource
                         'ANAPEC' => 'info',
                         'STAGE' => 'gray',
                         default => 'gray',
-                    }),
+                    })
+                    ->searchable()
+                    ->sortable(),
 
                 TextColumn::make('salaire')
                     ->money('mad') // Formattage monétaire automatique
                     ->sortable(),
 
+                // 👇 Optimisation : Dates triables 👇
                 TextColumn::make('date_debut')
                     ->date('d/m/Y')
-                    ->label('Début'),
+                    ->label('Début')
+                    ->sortable(),
 
+                // 👇 Optimisation : Dates triables 👇
                 TextColumn::make('date_fin')
                     ->date('d/m/Y')
                     ->label('Fin')
-                    ->placeholder('Indéterminé'), // Si c'est vide (CDI)
+                    ->placeholder('Indéterminé') // Si c'est vide (CDI)
+                    ->sortable(),
             ])
             ->filters([
                 SelectFilter::make('type')
@@ -135,7 +143,9 @@ class ContratResource extends Resource
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+            // 👇 Optimisation : Tri par défaut (les plus récents en premier) 👇
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getRelations(): array

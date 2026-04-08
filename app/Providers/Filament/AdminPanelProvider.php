@@ -28,17 +28,14 @@ class AdminPanelProvider extends PanelProvider
             ->path('app')
             ->login()
             
-            // 1. Thème sombre et Top Navigation
             ->darkMode(true)
-            ->topNavigation() // 👈 C'est cette ligne qui transforme TOUTE la page !
-            
-            // 2. L'identité de votre ERP
+            ->topNavigation() 
+            ->globalSearch(false)
             ->brandName('GRH Workspace')
             ->brandLogo(asset('image/logo.png'))
             ->brandLogoHeight('2.5rem')
             ->favicon(asset('image/logo.png'))
             
-            // 3. Typographie et Couleurs modernes
             ->font('Plus Jakarta Sans')
             ->colors([
                 'primary' => Color::Indigo,
@@ -53,6 +50,9 @@ class AdminPanelProvider extends PanelProvider
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
                 Widgets\AccountWidget::class,
+                \App\Filament\Widgets\AlertesAdminWidget::class, 
+                // 👇 WIDGET EMPLOYÉ AJOUTÉ ICI 👇
+                \App\Filament\Widgets\AlertesEmployeWidget::class,
                 \App\Filament\Widgets\PointagesChart::class,
             ])
             ->middleware([

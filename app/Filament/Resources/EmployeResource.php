@@ -16,15 +16,14 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class EmployeResource extends Resource
 {
     protected static ?string $model = Employe::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-user-group'; // Icône plus adaptée
+    protected static ?string $navigationIcon = 'heroicon-o-user-group';
     
-    protected static ?string $navigationGroup = 'Gestion RH'; // Pour grouper dans le menu
+    protected static ?string $navigationGroup = 'Gestion RH';
     
     protected static ?string $recordTitleAttribute = 'matricule';
 
@@ -33,7 +32,6 @@ class EmployeResource extends Resource
         /** @var \App\Models\User|null $user */
         $user = \Illuminate\Support\Facades\Auth::user();
 
-        // On vérifie s'il y a un utilisateur connecté ET s'il est admin
         return $user && $user->hasRole('admin');
     }
 
@@ -44,14 +42,13 @@ class EmployeResource extends Resource
                 Section::make('Informations Personnelles')
                     ->description('Lier cet employé à un compte utilisateur existant.')
                     ->schema([
-                        // Sélection du compte User (Affiche l'email pour être unique)
                         Select::make('user_id')
                             ->relationship('user', 'email')
                             ->label('Compte Utilisateur')
                             ->searchable()
                             ->preload()
                             ->required()
-                            ->createOptionForm([ // Permet de créer un User à la volée
+                            ->createOptionForm([
                                 TextInput::make('nom')->required(),
                                 TextInput::make('prenom')->required(),
                                 TextInput::make('email')->email()->required(),
@@ -66,7 +63,6 @@ class EmployeResource extends Resource
 
                 Section::make('Affectation & Poste')
                     ->schema([
-                        // Sélection du Département
                         Select::make('departement_id')
                             ->relationship('departement', 'libelle')
                             ->label('Département')
@@ -77,7 +73,6 @@ class EmployeResource extends Resource
                                 TextInput::make('libelle')->required(),
                             ]),
 
-                        // Sélection du Poste
                         Select::make('poste_id')
                             ->relationship('poste', 'titre')
                             ->label('Poste Occupé')
@@ -91,7 +86,7 @@ class EmployeResource extends Resource
                         DatePicker::make('date_embauche')
                             ->label('Date d\'embauche')
                             ->required()
-                            ->native(false) // Utilise le calendrier JS de Filament
+                            ->native(false)
                             ->displayFormat('d/m/Y'),
                     ])->columns(2),
             ]);
@@ -101,31 +96,31 @@ class EmployeResource extends Resource
     {
         return $table
             ->columns([
-                // Affiche le Nom via la relation User
                 TextColumn::make('user.nom')
                     ->label('Nom')
                     ->searchable()
                     ->sortable(),
 
-                // Affiche le Prénom via la relation User
                 TextColumn::make('user.prenom')
                     ->label('Prénom')
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable(), // 👇 Optimisation : Rendu triable
 
                 TextColumn::make('matricule')
-                    ->badge() // Style badge gris
-                    ->searchable(),
+                    ->badge()
+                    ->searchable()
+                    ->sortable(), // 👇 Optimisation : Rendu triable
 
-                // Affiche le libellé du département au lieu de l'ID
                 TextColumn::make('departement.libelle')
                     ->label('Département')
+                    ->searchable() // 👇 Optimisation : Recherchable
                     ->sortable()
                     ->badge()
                     ->color('info'),
 
-                // Affiche le titre du poste au lieu de l'ID
                 TextColumn::make('poste.titre')
                     ->label('Poste')
+                    ->searchable() // 👇 Optimisation : Recherchable
                     ->sortable(),
 
                 TextColumn::make('date_embauche')
@@ -138,10 +133,14 @@ class EmployeResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                // Filtre pour trier rapidement par département
                 SelectFilter::make('departement')
                     ->relationship('departement', 'libelle')
-                    ->label('Filtrer par Département'),
+                    ->label('Département'),
+                
+                // 👇 Nouveau filtre par Poste 👇
+                SelectFilter::make('poste')
+                    ->relationship('poste', 'titre')
+                    ->label('Poste'),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
@@ -151,14 +150,14 @@ class EmployeResource extends Resource
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+            // 👇 Tri par défaut : les derniers arrivés en haut 👇
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getRelations(): array
     {
-        return [
-            // On pourra ajouter les Contrats ici plus tard
-        ];
+        return [];
     }
 
     public static function getPages(): array
