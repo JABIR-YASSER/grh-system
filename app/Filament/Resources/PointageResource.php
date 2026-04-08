@@ -16,39 +16,40 @@ class PointageResource extends Resource
 {
     protected static ?string $model = Pointage::class;
 
-    // 1. Icône plus logique et groupe de navigation
     protected static ?string $navigationIcon = 'heroicon-o-clock';
     protected static ?string $navigationGroup = 'Gestion RH';
     protected static ?string $navigationLabel = 'Pointages';
 
     public static function canViewAny(): bool
     {
-        // Seuls les admins peuvent voir le menu et la liste des pointages
+        // 🔒 Sécurité : Seuls les administrateurs ont accès à cette interface
         return Auth::user()?->hasRole('admin') ?? false;
     }
 
     public static function form(Form $form): Form
     {
-        // 2. Formulaire complété pour permettre aux admins de corriger les pointages
         return $form
             ->schema([
                 Forms\Components\Select::make('employe_id')
-                    ->relationship('employe', 'matricule') // Tu peux aussi concaténer Nom + Matricule si tu as une fonction dans le modèle
-                    ->label('Employé')
+                    ->relationship('employe', 'matricule')
+                    ->label('Employé (Matricule)')
                     ->searchable()
+                    ->preload()
                     ->required(),
                     
                 Forms\Components\DatePicker::make('date')
-                    ->label('Date')
+                    ->label('Date du pointage')
                     ->default(now())
-                    ->required(),
+                    ->required()
+                    ->native(false)
+                    ->displayFormat('d/m/Y'),
                     
                 Forms\Components\TimePicker::make('heure_arrivee')
                     ->label('Heure d\'arrivée')
                     ->required(),
                     
                 Forms\Components\TimePicker::make('heure_depart')
-                    ->label('Heure de départ'), // Pas required car l'employé n'a peut-être pas encore terminé sa journée
+                    ->label('Heure de départ'),
             ]);
     }
 
@@ -56,7 +57,7 @@ class PointageResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('employe.user.nom') // Ajout du nom pour plus de clarté
+                Tables\Columns\TextColumn::make('employe.user.nom')
                     ->label('Employé')
                     ->searchable()
                     ->sortable(),
@@ -66,7 +67,7 @@ class PointageResource extends Resource
                     ->searchable(),
 
                 Tables\Columns\TextColumn::make('date')
-                    ->date('d/m/Y') // Formatage de la date à la française
+                    ->date('d/m/Y')
                     ->sortable()
                     ->label('Date'),
 
@@ -83,11 +84,14 @@ class PointageResource extends Resource
                     ->color('danger'),
             ])
             ->filters([
-                // 3. Filtre de date corrigé avec la logique SQL
                 Tables\Filters\Filter::make('date')
                     ->form([
-                        Forms\Components\DatePicker::make('date_debut')->label('Du'),
-                        Forms\Components\DatePicker::make('date_fin')->label('Au'),
+                        Forms\Components\DatePicker::make('date_debut')
+                            ->label('Du')
+                            ->native(false),
+                        Forms\Components\DatePicker::make('date_fin')
+                            ->label('Au')
+                            ->native(false),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
@@ -102,21 +106,15 @@ class PointageResource extends Resource
                     })
             ])
             ->actions([
+                // ✏️ L'administrateur peut modifier pour corriger une erreur
                 Tables\Actions\EditAction::make(),
+                
+                // ❌ La suppression (DeleteAction) est absente pour des raisons légales et d'audit
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
+                // ❌ Les actions de groupe sont supprimées pour éviter la suppression massive par erreur
             ])
-            ->defaultSort('date', 'desc'); // Affiche les pointages les plus récents en premier
-    }
-
-    public static function getRelations(): array
-    {
-        return [
-            //
-        ];
+            ->defaultSort('date', 'desc');
     }
 
     public static function getPages(): array
