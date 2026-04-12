@@ -49,10 +49,17 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->widgets([
+                // 1. Message de bienvenue
                 Widgets\AccountWidget::class,
+                
+                // 2. Statistiques Rapides (Le nouveau widget !)
+                \App\Filament\Widgets\StatsConge::class, 
+                
+                // 3. Les Alertes Administratives et Employés
                 \App\Filament\Widgets\AlertesAdminWidget::class, 
-                // 👇 WIDGET EMPLOYÉ AJOUTÉ ICI 👇
                 \App\Filament\Widgets\AlertesEmployeWidget::class,
+                
+                // 4. Les Graphiques Analytiques
                 \App\Filament\Widgets\PointagesChart::class,
             ])
             ->middleware([
