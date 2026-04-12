@@ -4,7 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CongeResource\Pages;
 use App\Models\Conge;
-use App\Models\DossierEmploye; // Make sure to import the DossierEmploye model
+use App\Models\DossierEmploye; 
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -17,8 +17,9 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
-use Filament\Notifications\Notification; // Import for notifications
+use Filament\Notifications\Notification; 
 use Illuminate\Database\Eloquent\Builder;
+use Carbon\Carbon; // 👇 Ajout de Carbon pour gérer les dates
 
 class CongeResource extends Resource
 {
@@ -198,28 +199,42 @@ class CongeResource extends Resource
                     ->label('Filtrer par type'),
             ])
             ->actions([
+                // 👇 LA NOUVELLE LOGIQUE EST ICI 👇
                 Tables\Actions\Action::make('valider')
                     ->icon('heroicon-o-check')
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading('Valider le congé')
-                    ->modalDescription('Êtes-vous sûr de vouloir valider cette demande de congé ? Le statut de l\'employé sera mis à jour.')
+                    ->modalDescription('Êtes-vous sûr de vouloir valider cette demande de congé ?')
                     ->modalSubmitActionLabel('Oui, valider')
                     ->modalCancelActionLabel('Annuler')
                     ->action(function (Conge $record) {
-                        // 1. Update the leave status
+                        // 1. On valide la demande de congé dans tous les cas
                         $record->update(['statut' => 'accepte']);
 
-                        // 2. Find and update the employee's dossier status
-                        $dossier = DossierEmploye::where('employe_id', $record->employe_id)->first();
-                        if ($dossier) {
-                            $dossier->update(['statut' => 'en_conge']);
+                        // 2. On utilise Carbon pour comparer les dates
+                        $aujourdHui = Carbon::today();
+                        $dateDebut = Carbon::parse($record->date_debut);
+
+                        // 3. Si le congé commence aujourd'hui ou dans le passé
+                        if ($dateDebut->lessThanOrEqualTo($aujourdHui)) {
+                            $dossier = DossierEmploye::where('employe_id', $record->employe_id)->first();
+                            if ($dossier) {
+                                $dossier->update(['statut' => 'en_conge']);
+                            }
+                            $titreNotification = 'Congé validé et statut mis à jour !';
+                            $bodyNotification = "L'employé est actuellement marqué en congé.";
+                        } 
+                        // 4. Si le congé est prévu pour plus tard (ex: le 15)
+                        else {
+                            $titreNotification = 'Congé validé pour le futur !';
+                            $bodyNotification = "Le statut passera automatiquement en congé le " . $dateDebut->format('d/m/Y') . ".";
                         }
 
-                        // 3. Notify the admin
+                        // 5. On affiche la notification adéquate
                         Notification::make()
-                            ->title('Congé validé')
-                            ->body('Le statut de l\'employé a été mis à jour avec succès.')
+                            ->title($titreNotification)
+                            ->body($bodyNotification)
                             ->success()
                             ->send();
                     })
@@ -251,7 +266,6 @@ class CongeResource extends Resource
                         return $record->statut === 'en_attente' && $user && $user->hasRole('admin');
                     }),
                     
-                // Optional: Action to mark leave as finished and set employee back to active
                 Tables\Actions\Action::make('terminer')
                     ->label('Marquer Terminé')
                     ->icon('heroicon-o-arrow-uturn-left')
@@ -270,7 +284,6 @@ class CongeResource extends Resource
                     ->visible(function (Conge $record) {
                         /** @var \App\Models\User|null $user */
                         $user = \Illuminate\Support\Facades\Auth::user();
-                        // Only show if it's accepted and the user is an admin
                         return $record->statut === 'accepte' && $user && $user->hasRole('admin');
                     }),
 
