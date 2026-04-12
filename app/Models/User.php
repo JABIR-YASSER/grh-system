@@ -8,16 +8,18 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Permission\Traits\HasRoles;
 use Filament\Models\Contracts\FilamentUser;
-use Filament\Models\Contracts\HasName; // <--- AJOUT 1
+use Filament\Models\Contracts\HasName;
 use Filament\Panel;
 
-class User extends Authenticatable implements FilamentUser, HasName // <--- AJOUT 2
+class User extends Authenticatable implements FilamentUser, HasName
 {
     use HasFactory, Notifiable, SoftDeletes, HasRoles;
 
     protected $fillable = [
-        'uuid', 'nom', 'prenom', 'email', 'telephone', 
-        'photo_url', 'etat', 'derniere_connexion_at', 'password',
+        'nom', 'prenom', 'email', 'telephone', 
+        'etat', 'derniere_connexion_at', 'password',
+        // 'uuid' et 'photo_url' sont conservés ici au cas où ils existent en BDD 
+        // même si on ne les affiche plus dans le formulaire.
     ];
 
     protected $hidden = [
@@ -38,12 +40,15 @@ class User extends Authenticatable implements FilamentUser, HasName // <--- AJOU
         return $this->hasOne(Employe::class);
     }
 
+    /**
+     * 🔒 C'est ici que la magie opère !
+     */
     public function canAccessPanel(Panel $panel): bool
     {
-        return true;
+        // L'utilisateur ne peut entrer que si son état est 'actif'
+        return $this->etat === 'actif';
     }
 
-    // <--- AJOUT 3 : La méthode qui sauve la situation
     public function getFilamentName(): string
     {
         return "{$this->prenom} {$this->nom}";
