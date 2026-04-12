@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\CongeResource\Pages;
 use App\Models\Conge;
+use App\Models\DossierEmploye; // Make sure to import the DossierEmploye model
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -16,6 +17,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Notifications\Notification; // Import for notifications
 use Illuminate\Database\Eloquent\Builder;
 
 class CongeResource extends Resource
@@ -146,7 +148,6 @@ class CongeResource extends Resource
                     ->searchable()
                     ->sortable(),
 
-                // 👇 Optimisation : Triable et Recherchable 👇
                 TextColumn::make('type')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -158,12 +159,10 @@ class CongeResource extends Resource
                     ->searchable()
                     ->sortable(),
 
-                // 👇 Optimisation : Dates triables 👇
                 TextColumn::make('date_debut')->date('d/m/Y')->label('Début')->sortable(),
                 TextColumn::make('date_fin')->date('d/m/Y')->label('Fin')->sortable(),
                 TextColumn::make('jours')->suffix(' Jours')->label('Durée')->sortable(),
 
-                // 👇 Optimisation : Statut triable et recherchable 👇
                 TextColumn::make('statut')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -188,7 +187,6 @@ class CongeResource extends Resource
                     ])
                     ->label('Filtrer par statut'),
                     
-                // 👇 Nouveau filtre par Type de congé 👇
                 SelectFilter::make('type')
                     ->options([
                         'paye' => 'Congé Payé',
@@ -205,10 +203,26 @@ class CongeResource extends Resource
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading('Valider le congé')
-                    ->modalDescription('Êtes-vous sûr de vouloir valider cette demande de congé ?')
+                    ->modalDescription('Êtes-vous sûr de vouloir valider cette demande de congé ? Le statut de l\'employé sera mis à jour.')
                     ->modalSubmitActionLabel('Oui, valider')
                     ->modalCancelActionLabel('Annuler')
-                    ->action(fn (Conge $record) => $record->update(['statut' => 'accepte']))
+                    ->action(function (Conge $record) {
+                        // 1. Update the leave status
+                        $record->update(['statut' => 'accepte']);
+
+                        // 2. Find and update the employee's dossier status
+                        $dossier = DossierEmploye::where('employe_id', $record->employe_id)->first();
+                        if ($dossier) {
+                            $dossier->update(['statut' => 'en_conge']);
+                        }
+
+                        // 3. Notify the admin
+                        Notification::make()
+                            ->title('Congé validé')
+                            ->body('Le statut de l\'employé a été mis à jour avec succès.')
+                            ->success()
+                            ->send();
+                    })
                     ->visible(function (Conge $record) {
                         /** @var \App\Models\User|null $user */
                         $user = \Illuminate\Support\Facades\Auth::user();
@@ -223,17 +237,46 @@ class CongeResource extends Resource
                     ->modalDescription('Êtes-vous sûr de vouloir refuser cette demande ?')
                     ->modalSubmitActionLabel('Oui, refuser')
                     ->modalCancelActionLabel('Annuler')
-                    ->action(fn (Conge $record) => $record->update(['statut' => 'refuse']))
+                    ->action(function (Conge $record) {
+                        $record->update(['statut' => 'refuse']);
+                        
+                        Notification::make()
+                            ->title('Congé refusé')
+                            ->danger()
+                            ->send();
+                    })
                     ->visible(function (Conge $record) {
                         /** @var \App\Models\User|null $user */
                         $user = \Illuminate\Support\Facades\Auth::user();
                         return $record->statut === 'en_attente' && $user && $user->hasRole('admin');
                     }),
+                    
+                // Optional: Action to mark leave as finished and set employee back to active
+                Tables\Actions\Action::make('terminer')
+                    ->label('Marquer Terminé')
+                    ->icon('heroicon-o-arrow-uturn-left')
+                    ->color('gray')
+                    ->action(function (Conge $record) {
+                        $dossier = DossierEmploye::where('employe_id', $record->employe_id)->first();
+                        if ($dossier) {
+                            $dossier->update(['statut' => 'actif']);
+                        }
+                        Notification::make()
+                            ->title('Statut réinitialisé')
+                            ->body('L\'employé est de nouveau actif.')
+                            ->success()
+                            ->send();
+                    })
+                    ->visible(function (Conge $record) {
+                        /** @var \App\Models\User|null $user */
+                        $user = \Illuminate\Support\Facades\Auth::user();
+                        // Only show if it's accepted and the user is an admin
+                        return $record->statut === 'accepte' && $user && $user->hasRole('admin');
+                    }),
 
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
             ])
-            // 👇 Tri par défaut : les plus récents en haut 👇
             ->defaultSort('created_at', 'desc');
     }
 

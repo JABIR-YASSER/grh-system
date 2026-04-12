@@ -171,6 +171,7 @@ class DossierEmployeResource extends Resource
                                 Select::make('statut')
                                     ->options([
                                         'actif' => 'Actif',
+                                        'en_conge' => 'En congé', // 👇 AJOUTÉ ICI
                                         'archive' => 'Archivé',
                                         'suspendu' => 'Suspendu',
                                     ])
@@ -219,6 +220,7 @@ class DossierEmployeResource extends Resource
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'actif' => 'success',
+                        'en_conge' => 'info', // 👇 AJOUTÉ ICI (Badge Bleu)
                         'archive' => 'gray',
                         'suspendu' => 'danger',
                         default => 'warning',
@@ -227,7 +229,12 @@ class DossierEmployeResource extends Resource
             ])
             ->filters([
                 SelectFilter::make('statut')
-                    ->options(['actif' => 'Actif', 'archive' => 'Archivé', 'suspendu' => 'Suspendu']),
+                    ->options([
+                        'actif' => 'Actif', 
+                        'en_conge' => 'En congé', // 👇 AJOUTÉ ICI
+                        'archive' => 'Archivé', 
+                        'suspendu' => 'Suspendu'
+                    ]),
                 SelectFilter::make('sexe')
                     ->options(['H' => 'Homme', 'F' => 'Femme']),
             ])
