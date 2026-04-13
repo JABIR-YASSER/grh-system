@@ -13,4 +13,15 @@ class CreatePaie extends CreateRecord
     {
         return $this->getResource()::getUrl('index');
     }
+    protected function afterCreate(): void
+    {
+        // On récupère la paie qui vient d'être créée
+        $paie = $this->record;
+
+        // On cherche toutes les primes non payées de cet employé...
+        \App\Models\Prime::where('employe_id', $paie->employe_id)
+            ->where('payee', false)
+            // ... et on les marque comme payées !
+            ->update(['payee' => true]);
+    }
 }

@@ -45,29 +45,55 @@ class PaieResource extends Resource
                                 $contrat = $employe?->contratActuel()->first();
 
                                 if ($contrat) {
-                                    $brut = $contrat->salaire;
+                                    $salaireBase = $contrat->salaire;
                                     
-                                    $baseCnss = min($brut, 6000);
-                                    $cnss = $baseCnss * 0.0448;
-                                    $amo = $brut * 0.0226;
-                                    
-                                    $totalDeductions = $cnss + $amo;
-                                    $net = $brut - $totalDeductions;
+                                    // 1. Récupérer les Primes non payées (Gains)
+                                    $totalPrimes = \App\Models\Prime::where('employe_id', $state)
+                                        ->where('payee', false)
+                                        ->sum('montant');
 
-                                    $set('salaire_brut', number_format($brut, 2, '.', ''));
+                                    // 2. Calculer les Absences via Pointages (Retenues)
+                                    // On vérifie combien de jours ont été pointés le mois dernier
+                                    $joursTravailles = \App\Models\Pointage::where('employe_id', $state)
+                                        ->whereMonth('date', now()->subMonth()->month)
+                                        ->count();
+                                        
+                                    // Sur une base de 26 jours ouvrables au Maroc
+                                    $joursAbsents = max(0, 26 - $joursTravailles);
+                                    $retenueAbsence = ($salaireBase / 26) * $joursAbsents;
+
+                                    // 3. Calcul de la base Imposable
+                                    $brutTotal = $salaireBase + $totalPrimes; // Ce qu'il gagne au total
+                                    $baseImposable = max(0, $brutTotal - $retenueAbsence); // Ce sur quoi on paie les taxes
+
+                                    // 4. Calculs Fiscaux (CNSS & AMO)
+                                    $baseCnss = min($baseImposable, 6000);
+                                    $cnss = $baseCnss * 0.0448;
+                                    $amo = $baseImposable * 0.0226;
+                                    
+                                    // 5. Totaux Finaux
+                                    $totalDeductions = $retenueAbsence + $cnss + $amo;
+                                    $net = max(0, $brutTotal - $totalDeductions);
+
+                                    // 6. Mise à jour des champs Filament
+                                    $set('salaire_brut', number_format($brutTotal, 2, '.', ''));
                                     $set('deductions', number_format($totalDeductions, 2, '.', ''));
                                     $set('net_a_payer', number_format($net, 2, '.', ''));
                                     
+                                    // On sauvegarde tous les détails pour le PDF
                                     $set('donnees_calcul', [
-                                        'base_cnss' => $baseCnss,
-                                        'taux_cnss' => 4.48,
-                                        'montant_cnss' => $cnss,
-                                        'montant_amo' => $amo,
+                                        'salaire_base' => $salaireBase,
+                                        'total_primes' => $totalPrimes,
+                                        'jours_absents' => $joursAbsents,
+                                        'retenue_absence' => round($retenueAbsence, 2),
+                                        'base_cnss' => round($baseCnss, 2),
+                                        'montant_cnss' => round($cnss, 2),
+                                        'montant_amo' => round($amo, 2),
                                     ]);
                                 }
                             }),
 
-                        // 👇 Champ fixe et verrouillé sur le mois précédent 👇
+                        // Champ fixe et verrouillé sur le mois précédent
                         TextInput::make('mois')
                             ->label('Mois de référence')
                             ->default(function () {
@@ -81,7 +107,7 @@ class PaieResource extends Resource
                             ->readOnly()
                             ->required(),
                             
-                        // 👇 Champ fixe et verrouillé sur l'année correspondante 👇
+                        // Champ fixe et verrouillé sur l'année correspondante
                         TextInput::make('annee')
                             ->label('Année')
                             ->default(now()->subMonth()->year)
@@ -101,12 +127,12 @@ class PaieResource extends Resource
                 Section::make('Détails Financiers')
                     ->schema([
                         TextInput::make('salaire_brut')
-                            ->label('Salaire Brut')
+                            ->label('Salaire Brut (Base + Primes)')
                             ->prefix('DH')
                             ->readOnly(),
 
                         TextInput::make('deductions')
-                            ->label('Retenues (CNSS+AMO)')
+                            ->label('Retenues (Absences + CNSS + AMO)')
                             ->prefix('- DH')
                             ->readOnly(),
 
