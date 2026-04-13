@@ -52,14 +52,17 @@ class AdminPanelProvider extends PanelProvider
                 // 1. Message de bienvenue
                 Widgets\AccountWidget::class,
                 
-                // 2. Statistiques Rapides (Le nouveau widget !)
-                \App\Filament\Widgets\StatsConge::class, 
+                // 2. Le gros bouton de pointage pour les Employés
+                \App\Filament\Widgets\PointageWidget::class,
+                
+                // (Note : StatsOverview est chargé automatiquement par discoverWidgets, 
+                // pas besoin de le mettre ici. Et on a supprimé StatsConge !)
                 
                 // 3. Les Alertes Administratives et Employés
                 \App\Filament\Widgets\AlertesAdminWidget::class, 
                 \App\Filament\Widgets\AlertesEmployeWidget::class,
                 
-                // 4. Les Graphiques Analytiques
+                // 4. Les Graphiques Analytiques (Admin)
                 \App\Filament\Widgets\PointagesChart::class,
             ])
             ->middleware([

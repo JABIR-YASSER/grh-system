@@ -112,7 +112,13 @@ class PointageResource extends Resource
                 // ❌ La suppression (DeleteAction) est absente pour des raisons légales et d'audit
             ])
             ->bulkActions([
-                // ❌ Les actions de groupe sont supprimées pour éviter la suppression massive par erreur
+                Tables\Actions\BulkActionGroup::make([
+                    // 👇 Ajout du bouton d'export Excel demandé dans le CDC 👇
+                    \pxlrbt\FilamentExcel\Actions\Tables\ExportBulkAction::make()
+                        ->label('Exporter vers Excel')
+                        ->color('success')
+                        ->icon('heroicon-o-document-arrow-down'),
+                ]),
             ])
             ->defaultSort('date', 'desc');
     }
