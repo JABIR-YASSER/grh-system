@@ -10,7 +10,8 @@ class PointagesChart extends ChartWidget
 {
     protected static ?string $heading = 'Évolution des Présences (7 derniers jours)';
     protected static ?int $sort = 2; 
-    protected int | string | array $columnSpan = 'full';
+    protected int | string | array $columnSpan = '1';
+    protected static ?string $maxHeight = '250px';
 
     // 👇 LA SÉCURITÉ : Restreindre l'affichage du graphique 👇
     public static function canView(): bool
@@ -19,7 +20,8 @@ class PointagesChart extends ChartWidget
         // return auth()->user()->hasRole('Administrateur'); // ou 'admin' selon votre base
         
         // Méthode simple et infaillible pour votre compte de test actuel :
-        return auth('web')->user()?->email === 'admin@grh.com';
+        return auth('web')->user()?->email === 'admin@grh.com'
+            && ! request()->routeIs('filament.app.pages.dashboard');
     }
 
     protected function getData(): array

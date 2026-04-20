@@ -29,18 +29,22 @@ class DatabaseSeeder extends Seeder
     {
         $faker = Faker::create('fr_FR');
 
+        // ==========================================
         // 1. CRÉATION DES RÔLES
+        // ==========================================
         $roleAdmin = Role::firstOrCreate(['name' => 'admin']);
         $roleEmploye = Role::firstOrCreate(['name' => 'employe']);
 
+        // ==========================================
         // 2. CRÉATION DES DÉPARTEMENTS ET POSTES
+        // ==========================================
         $departements = [
             ['code' => 'RH', 'libelle' => 'Ressources Humaines', 'description' => 'Gestion du personnel'],
             ['code' => 'IT', 'libelle' => 'Systèmes d\'Information', 'description' => 'Développement et réseau'],
             ['code' => 'COM', 'libelle' => 'Commercial', 'description' => 'Ventes et marketing'],
             ['code' => 'FIN', 'libelle' => 'Finances', 'description' => 'Comptabilité et paie'],
         ];
-        foreach ($departements as $dept) { Departement::create($dept); }
+        foreach ($departements as $dept) { Departement::firstOrCreate(['code' => $dept['code']], $dept); }
 
         $postes = [
             ['titre' => 'Directeur RH', 'salaire_min' => 15000, 'salaire_max' => 25000],
@@ -49,24 +53,28 @@ class DatabaseSeeder extends Seeder
             ['titre' => 'Commercial Terrain', 'salaire_min' => 5000, 'salaire_max' => 15000],
             ['titre' => 'Technicien Support', 'salaire_min' => 4000, 'salaire_max' => 8000],
         ];
-        foreach ($postes as $poste) { Poste::create($poste); }
+        foreach ($postes as $poste) { Poste::firstOrCreate(['titre' => $poste['titre']], $poste); }
 
-        // 3. CRÉATION DES COMPTES
-        $adminUser = User::create([
+        // ==========================================
+        // 3. CRÉATION DES COMPTES UTILISATEURS
+        // ==========================================
+        $adminUser = User::firstOrCreate(['email' => 'admin@grh.com'], [
             'uuid' => Str::uuid(), 'nom' => 'Jabir', 'prenom' => 'Yasser',
-            'email' => 'admin@grh.com', 'password' => Hash::make('password'),
+            'password' => Hash::make('password'),
             'telephone' => '0600000000', 'etat' => 'actif',
         ]);
         $adminUser->assignRole($roleAdmin);
 
-        $employeUser = User::create([
+        $employeUser = User::firstOrCreate(['email' => 'employe@grh.com'], [
             'uuid' => Str::uuid(), 'nom' => 'Test', 'prenom' => 'Employe',
-            'email' => 'employe@grh.com', 'password' => Hash::make('password'),
+            'password' => Hash::make('password'),
             'telephone' => '0611111111', 'etat' => 'actif',
         ]);
         $employeUser->assignRole($roleEmploye);
 
         $users = collect([$adminUser, $employeUser]);
+        
+        // On génère 20 employés supplémentaires au hasard
         for ($i = 0; $i < 20; $i++) {
             $nouvelEmploye = User::create([
                 'uuid' => Str::uuid(), 'nom' => $faker->lastName, 'prenom' => $faker->firstName,
@@ -77,24 +85,24 @@ class DatabaseSeeder extends Seeder
             $users->push($nouvelEmploye);
         }
 
-        // 4. CRÉATION DES EMPLOYÉS, CONTRATS ET DOSSIERS
+        // ==========================================
+        // 4. CRÉATION DES EMPLOYÉS, CONTRATS ET PAIE
+        // ==========================================
         $anneeEnCours = date('Y');
         
         foreach ($users as $index => $user) {
-            $employe = Employe::create([
-                'user_id' => $user->id,
+            $employe = Employe::firstOrCreate(['user_id' => $user->id], [
                 'matricule' => 'EMP-' . $anneeEnCours . '-' . str_pad($index + 1, 3, '0', STR_PAD_LEFT),
                 'departement_id' => Departement::inRandomOrder()->first()->id,
                 'poste_id' => Poste::inRandomOrder()->first()->id,
-                'date_embauche' => $faker->dateTimeBetween('-3 years', '-1 month'), // Embauchés il y a au moins 1 mois
+                'date_embauche' => $faker->dateTimeBetween('-3 years', '-1 month'),
             ]);
 
             // Dossier de l'employé
-            DossierEmploye::create([
-                'employe_id' => $employe->id,
+            DossierEmploye::firstOrCreate(['employe_id' => $employe->id], [
                 'numero' => 'DOS-' . str_pad($employe->id, 4, '0', STR_PAD_LEFT),
                 'statut' => 'actif',
-                'cin' => strtoupper($faker->bothify('??######')), // Ex: AB123456
+                'cin' => strtoupper($faker->bothify('??######')),
                 'sexe' => $faker->randomElement(['H', 'F']),
                 'date_naissance' => $faker->dateTimeBetween('-50 years', '-20 years'),
                 'situation_familiale' => $faker->randomElement(['celibataire', 'marie', 'divorce', 'veuf']),
@@ -104,26 +112,28 @@ class DatabaseSeeder extends Seeder
 
             $salaire = $faker->randomFloat(2, 4000, 20000);
             
-            Contrat::create([
-                'employe_id' => $employe->id,
+            Contrat::firstOrCreate(['employe_id' => $employe->id], [
                 'type' => $faker->randomElement(['CDI', 'CDD', 'Stage']),
                 'date_debut' => $employe->date_embauche,
                 'date_fin' => null,
                 'salaire' => $salaire,
             ]);
 
-            // Paie de Février 2026 pour tout le monde
-            Paie::create([
-                'employe_id' => $employe->id,
-                'mois' => 'Février',
-                'annee' => 2026,
-                'salaire_brut' => $salaire,
-                'deductions' => $salaire * 0.20, // 20% de retenues (CNSS, IGR...)
-                'net_a_payer' => $salaire * 0.80,
-                'statut' => 'paye',
-            ]);
+            // Paie générique pour MARS et AVRIL 2026
+            foreach (['Mars', 'Avril'] as $mois) {
+                Paie::firstOrCreate([
+                    'employe_id' => $employe->id,
+                    'mois' => $mois,  // 👈 Enregistre "Mars" et "Avril" en texte
+                    'annee' => 2026,
+                ], [
+                    'salaire_brut' => $salaire,
+                    'deductions' => $salaire * 0.20,
+                    'net_a_payer' => $salaire * 0.80,
+                    'statut' => 'paye',
+                ]);
+            }
 
-            // Primes aléatoires (30% des employés ont une prime)
+            // Primes aléatoires (30%)
             if (rand(1, 100) <= 30) {
                 Prime::create([
                     'employe_id' => $employe->id,
@@ -134,7 +144,7 @@ class DatabaseSeeder extends Seeder
                 ]);
             }
 
-            // Congés aléatoires (40% des employés ont demandé un congé)
+            // Congés aléatoires (40%)
             if (rand(1, 100) <= 40) {
                 Conge::create([
                     'employe_id' => $employe->id,
@@ -148,28 +158,56 @@ class DatabaseSeeder extends Seeder
             }
         }
 
-        // 5. CRÉATION DES POINTAGES
+        // ==========================================
+        // 5. CRÉATION DES POINTAGES (MARS ET AVRIL 2026)
+        // ==========================================
         $tousLesEmployes = Employe::all();
-        for ($i = 30; $i >= 0; $i--) {
-            $date = Carbon::now()->subDays($i);
+        $this->command->info("⏳ Génération des pointages pour Mars et Avril 2026...");
+        
+        $dateDebut = Carbon::create(2026, 3, 1);
+        $dateFin = Carbon::create(2026, 4, 30);
+        
+        // Boucle jour par jour entre ces deux dates
+        for ($date = $dateDebut->copy(); $date->lte($dateFin); $date->addDay()) {
+            
+            // 🛑 On saute les week-ends (Samedi et Dimanche)
             if ($date->isSunday()) continue;
 
             foreach ($tousLesEmployes as $employe) {
-                if (rand(1, 100) <= 85) {
-                    Pointage::create([
-                        'employe_id' => $employe->id,
-                        'date' => $date->toDateString(),
-                        'heure_arrivee' => $faker->time('H:i:s', '08:45:00'),
-                        'heure_depart' => $faker->time('H:i:s', '18:15:00'),
-                        'created_at' => $date, 
-                        'updated_at' => $date,
-                    ]);
+                // ✅ Présence à 95%
+                if (rand(1, 100) <= 95) {
+                    
+                    // 📊 Génération de VRAIS retards
+                    if (rand(1, 100) <= 80) {
+                        // À l'heure : Arrivée entre 08:00 et 09:15
+                        $heureArrivee = Carbon::createFromTime(rand(8, 9), rand(0, 15))->format('H:i:s');
+                    } else {
+                        // En retard : Arrivée entre 09:16 et 10:30
+                        $heureArrivee = Carbon::createFromTime(rand(9, 10), rand(16, 30))->format('H:i:s');
+                    }
+
+                    // Départ normal entre 17:00 et 18:30
+                    $heureDepart = Carbon::createFromTime(rand(17, 18), rand(0, 30))->format('H:i:s');
+
+                    Pointage::updateOrCreate(
+                        [
+                            'employe_id' => $employe->id,
+                            'date' => $date->toDateString(),
+                        ],
+                        [
+                            'heure_arrivee' => $heureArrivee,
+                            'heure_depart' => $heureDepart,
+                            'created_at' => $date, 
+                            'updated_at' => $date,
+                        ]
+                    );
                 }
             }
         }
 
+        // ==========================================
         // 6. RECRUTEMENTS INTERNES
-        // On crée 5 demandes de changement de poste au hasard
+        // ==========================================
         for ($j = 0; $j < 5; $j++) {
             RecrutementInterne::create([
                 'poste_id' => Poste::inRandomOrder()->first()->id,
@@ -177,5 +215,7 @@ class DatabaseSeeder extends Seeder
                 'statut' => $faker->randomElement(['en_attente', 'entretien', 'approuve', 'rejete']),
             ]);
         }
+        
+        $this->command->info("✅ Base de données initialisée avec succès !");
     }
 }
