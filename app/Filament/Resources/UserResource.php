@@ -11,21 +11,22 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\ToggleButtons; // 👈 Import ajouté
 use Filament\Tables\Columns\TextColumn;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth; // 👈 Import ajouté pour la sécurité
 
 class UserResource extends Resource
 {
     protected static ?string $model = User::class;
 
-    // Changement de l'icône pour quelque chose de plus explicite
     protected static ?string $navigationIcon = 'heroicon-o-users';
-    protected static ?string $navigationGroup = 'Système'; // Groupé avec la config
+    protected static ?string $navigationGroup = 'Système';
 
     public static function canViewAny(): bool
     {
         /** @var \App\Models\User|null $user */
-        $user = \Illuminate\Support\Facades\Auth::user();
+        $user = Auth::user();
         return $user && $user->hasRole('admin');
     }
 
@@ -49,10 +50,8 @@ class UserResource extends Resource
                         TextInput::make('password')
                             ->label('Mot de passe')
                             ->password()
-                            // On ne demande le mot de passe que lors de la création
                             ->required(fn (string $context): bool => $context === 'create')
                             ->maxLength(255)
-                            // Hachage automatique du mot de passe avant enregistrement
                             ->dehydrated(fn ($state) => filled($state))
                             ->mutateDehydratedStateUsing(fn ($state) => Hash::make($state)),
                     ])->columns(2),
@@ -62,13 +61,28 @@ class UserResource extends Resource
                         TextInput::make('telephone')
                             ->tel()
                             ->maxLength(255),
-                        Select::make('etat')
+                            
+                        // 👇 OPTIMISATION 1 & 2 : ToggleButtons + Sécurité
+                        ToggleButtons::make('etat')
+                            ->label('État du compte')
                             ->options([
                                 'actif' => 'Actif',
                                 'bloque' => 'Bloqué',
                             ])
+                            ->colors([
+                                'actif' => 'success',
+                                'bloque' => 'danger',
+                            ])
+                            ->icons([
+                                'actif' => 'heroicon-m-check-circle',
+                                'bloque' => 'heroicon-m-x-circle',
+                            ])
+                            ->inline()
                             ->default('actif')
-                            ->required(),
+                            ->required()
+                            // L'utilisateur connecté ne peut pas se bloquer lui-même
+                            ->disabled(fn ($record) => $record && $record->id === Auth::id()),
+
                         Select::make('roles')
                             ->relationship('roles', 'name')
                             ->multiple()
@@ -83,16 +97,20 @@ class UserResource extends Resource
     {
         return $table
             ->columns([
+                // Fusion Nom et Prénom pour gagner de la place
                 TextColumn::make('nom')
-                    ->searchable()
+                    ->label('Utilisateur')
+                    ->formatStateUsing(fn ($record) => $record->nom . ' ' . $record->prenom)
+                    ->searchable(['nom', 'prenom'])
                     ->sortable(),
-                TextColumn::make('prenom')
-                    ->searchable()
-                    ->sortable(),
+
                 TextColumn::make('email')
-                    ->searchable(),
+                    ->searchable()
+                    ->icon('heroicon-m-envelope'), // Petite icône sympa
+
                 TextColumn::make('telephone')
                     ->searchable(),
+
                 TextColumn::make('etat')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
@@ -100,27 +118,35 @@ class UserResource extends Resource
                         'bloque' => 'danger',
                         default => 'gray',
                     }),
+
                 TextColumn::make('roles.name')
                     ->badge()
                     ->color('info')
                     ->label('Rôle'),
+
+                // 👇 OPTIMISATION 3 : Format "Il y a X temps"
                 TextColumn::make('derniere_connexion_at')
                     ->label('Dernière connexion')
-                    ->dateTime('d/m/Y H:i')
+                    ->since() // Transforme la date en texte relatif
                     ->sortable(),
             ])
             ->filters([
-                //
+                // Filtres gérés par les onglets
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                
+                // 👇 OPTIMISATION 1 : Sécurité anti-suicide numérique
+                Tables\Actions\DeleteAction::make()
+                    ->hidden(fn ($record) => $record->id === Auth::id())
+                    ->tooltip("Vous ne pouvez pas supprimer votre propre compte."),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+            ->defaultSort('created_at', 'desc');
     }
 
     public static function getPages(): array

@@ -51,16 +51,6 @@ class AdminPanelProvider extends PanelProvider
             ->widgets([
                 // 1. Message de bienvenue
                 Widgets\AccountWidget::class,
-                
-                // 2. Le gros bouton de pointage pour les Employés a été SUPPRIMÉ d'ici !
-                // \App\Filament\Widgets\PointageWidget::class,
-                
-                // 3. Les Alertes Administratives et Employés
-                \App\Filament\Widgets\AlertesAdminWidget::class, 
-                // \App\Filament\Widgets\AlertesEmployeWidget::class,
-                
-                // 4. Les Graphiques Analytiques (Admin)
-                
             ])
             ->middleware([
                 EncryptCookies::class,

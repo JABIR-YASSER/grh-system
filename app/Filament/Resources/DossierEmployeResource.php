@@ -14,10 +14,12 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\ToggleButtons; // 👈 Import ajouté ici
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
+use Filament\Notifications\Notification;
 
 class DossierEmployeResource extends Resource
 {
@@ -27,11 +29,8 @@ class DossierEmployeResource extends Resource
     protected static ?string $navigationGroup = 'Gestion RH';
     protected static ?string $navigationLabel = 'Dossiers Employés';
 
-    // --- SÉCURITÉ ET ACCÈS ---
-
     public static function canViewAny(): bool
     {
-        // Tout le monde peut voir la ressource (pour que l'employé voie son dossier)
         return Auth::check();
     }
 
@@ -55,7 +54,6 @@ class DossierEmployeResource extends Resource
         $query = parent::getEloquentQuery();
         $user = Auth::user();
 
-        // 🛡️ FILTRE : L'employé ne voit QUE son dossier, l'admin voit TOUT
         if ($user && !$user->hasRole('admin')) {
             $query->whereHas('employe', function ($q) use ($user) {
                 $q->where('user_id', $user->id);
@@ -64,8 +62,6 @@ class DossierEmployeResource extends Resource
 
         return $query;
     }
-
-    // --- FORMULAIRE ---
 
     public static function form(Form $form): Form
     {
@@ -84,7 +80,7 @@ class DossierEmployeResource extends Resource
                                     ->searchable()
                                     ->preload()
                                     ->required()
-                                    ->disabled(!$isAdmin) // Seul l'admin peut changer le lien
+                                    ->disabled(!$isAdmin)
                                     ->columnSpanFull(),
 
                                 TextInput::make('numero')
@@ -168,23 +164,33 @@ class DossierEmployeResource extends Resource
                                     ->label('N° de CNSS')
                                     ->disabled(!$isAdmin),
 
-                                Select::make('statut')
+                                // 👇 OPTIMISATION : Les ToggleButtons pour le Statut !
+                                ToggleButtons::make('statut')
+                                    ->label('Statut du dossier')
                                     ->options([
                                         'actif' => 'Actif',
-                                        'en_conge' => 'En congé', // 👇 AJOUTÉ ICI
-                                        'archive' => 'Archivé',
-                                        'suspendu' => 'Suspendu',
+                                        'en_conge' => 'En congé',
+                                        'archive' => 'Archivé', 
                                     ])
+                                    ->colors([
+                                        'actif' => 'success',
+                                        'en_conge' => 'info',
+                                        'archive' => 'gray',
+                                    ])
+                                    ->icons([
+                                        'actif' => 'heroicon-m-check-badge',
+                                        'en_conge' => 'heroicon-m-sun',
+                                        'archive' => 'heroicon-m-archive-box',
+                                    ])
+                                    ->inline()
                                     ->default('actif')
                                     ->required()
-                                    ->native(false)
-                                    ->disabled(!$isAdmin),
+                                    ->disabled(!$isAdmin)
+                                    ->columnSpanFull(),
                             ])->columns(2),
                     ])->columnSpanFull(),
             ]);
     }
-
-    // --- TABLEAU ---
 
     public static function table(Table $table): Table
     {
@@ -192,7 +198,13 @@ class DossierEmployeResource extends Resource
             ->columns([
                 TextColumn::make('employe.user.nom')
                     ->label('Nom Employé')
-                    ->searchable()
+                    ->formatStateUsing(fn ($record) => $record->employe->user->nom . ' ' . $record->employe->user->prenom)
+                    ->searchable(query: function (Builder $query, string $search): Builder {
+                        return $query->whereHas('employe.user', function (Builder $q) use ($search) {
+                            $q->where('nom', 'like', "%{$search}%")
+                              ->orWhere('prenom', 'like', "%{$search}%");
+                        });
+                    })
                     ->sortable(),
 
                 TextColumn::make('numero')
@@ -203,16 +215,19 @@ class DossierEmployeResource extends Resource
 
                 TextColumn::make('cin')
                     ->label('CIN')
+                    ->icon('heroicon-m-identification')
                     ->searchable()
                     ->sortable(),
 
                 TextColumn::make('telephone')
                     ->label('Téléphone')
+                    ->icon('heroicon-m-phone')
                     ->searchable(),
 
                 TextColumn::make('sexe')
                     ->badge()
                     ->color(fn (string $state): string => $state === 'H' ? 'info' : 'danger')
+                    ->icon(fn (string $state): string => $state === 'H' ? 'heroicon-m-user' : 'heroicon-m-user-minus')
                     ->formatStateUsing(fn (string $state): string => $state === 'H' ? 'Homme' : 'Femme')
                     ->sortable(),
 
@@ -220,7 +235,7 @@ class DossierEmployeResource extends Resource
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'actif' => 'success',
-                        'en_conge' => 'info', // 👇 AJOUTÉ ICI (Badge Bleu)
+                        'en_conge' => 'info',
                         'archive' => 'gray',
                         'suspendu' => 'danger',
                         default => 'warning',
@@ -228,21 +243,33 @@ class DossierEmployeResource extends Resource
                     ->sortable(),
             ])
             ->filters([
-                SelectFilter::make('statut')
-                    ->options([
-                        'actif' => 'Actif', 
-                        'en_conge' => 'En congé', // 👇 AJOUTÉ ICI
-                        'archive' => 'Archivé', 
-                        'suspendu' => 'Suspendu'
-                    ]),
                 SelectFilter::make('sexe')
                     ->options(['H' => 'Homme', 'F' => 'Femme']),
             ])
             ->actions([
-                // L'employé pourra "Voir" son dossier même s'il ne peut pas le modifier
                 Tables\Actions\ViewAction::make(), 
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                
+                Tables\Actions\Action::make('archiver')
+                    ->label('Archiver')
+                    ->icon('heroicon-o-archive-box')
+                    ->color('gray')
+                    ->requiresConfirmation()
+                    ->hidden(fn ($record) => 
+                        $record->statut === 'archive' || 
+                        ($record->employe && $record->employe->user_id === Auth::id())
+                    )
+                    ->action(function ($record) {
+                        $record->update(['statut' => 'archive']);
+                        Notification::make()
+                            ->title('Dossier archivé avec succès')
+                            ->success()
+                            ->send();
+                    }),
+
+                Tables\Actions\DeleteAction::make()
+                    ->hidden(fn ($record) => $record->statut !== 'archive')
+                    ->tooltip('Seuls les dossiers archivés peuvent être supprimés.'),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -257,7 +284,7 @@ class DossierEmployeResource extends Resource
         return [
             'index' => Pages\ListDossierEmployes::route('/'),
             'create' => Pages\CreateDossierEmploye::route('/create'),
-            'view' => Pages\ViewDossierEmploye::route('/{record}'), // Page de vue pour l'employé
+            'view' => Pages\ViewDossierEmploye::route('/{record}'), 
             'edit' => Pages\EditDossierEmploye::route('/{record}/edit'),
         ];
     }

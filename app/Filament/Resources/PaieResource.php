@@ -17,6 +17,7 @@ use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Set;
 use Filament\Tables\Columns\TextColumn;
 use Illuminate\Database\Eloquent\Builder;
+use Filament\Support\Enums\Alignment; // 👈 Import obligatoire pour l'alignement comptable
 
 class PaieResource extends Resource
 {
@@ -53,7 +54,6 @@ class PaieResource extends Resource
                                         ->sum('montant');
 
                                     // 2. Calculer les Absences via Pointages (Retenues)
-                                    // On vérifie combien de jours ont été pointés le mois dernier
                                     $joursTravailles = \App\Models\Pointage::where('employe_id', $state)
                                         ->whereMonth('date', now()->subMonth()->month)
                                         ->count();
@@ -63,8 +63,8 @@ class PaieResource extends Resource
                                     $retenueAbsence = ($salaireBase / 26) * $joursAbsents;
 
                                     // 3. Calcul de la base Imposable
-                                    $brutTotal = $salaireBase + $totalPrimes; // Ce qu'il gagne au total
-                                    $baseImposable = max(0, $brutTotal - $retenueAbsence); // Ce sur quoi on paie les taxes
+                                    $brutTotal = $salaireBase + $totalPrimes; 
+                                    $baseImposable = max(0, $brutTotal - $retenueAbsence); 
 
                                     // 4. Calculs Fiscaux (CNSS & AMO)
                                     $baseCnss = min($baseImposable, 6000);
@@ -93,7 +93,6 @@ class PaieResource extends Resource
                                 }
                             }),
 
-                        // Champ fixe et verrouillé sur le mois précédent
                         TextInput::make('mois')
                             ->label('Mois de référence')
                             ->default(function () {
@@ -107,7 +106,6 @@ class PaieResource extends Resource
                             ->readOnly()
                             ->required(),
                             
-                        // Champ fixe et verrouillé sur l'année correspondante
                         TextInput::make('annee')
                             ->label('Année')
                             ->default(now()->subMonth()->year)
@@ -155,9 +153,17 @@ class PaieResource extends Resource
     {
         return $table
             ->columns([
+                // 👇 OPTIMISATION 1 : Nom et Prénom fusionnés
+                
                 TextColumn::make('employe.user.nom')
-                    ->label('Nom')
-                    ->searchable()
+                    ->label('Employé')
+                    ->formatStateUsing(fn ($record) => $record->employe->user->nom . ' ' . $record->employe->user->prenom)
+                    ->searchable(query: function (Builder $query, string $search): Builder {
+                        return $query->whereHas('employe.user', function (Builder $q) use ($search) {
+                            $q->where('nom', 'like', "%{$search}%")
+                            ->orWhere('prenom', 'like', "%{$search}%");
+                        });
+                    })
                     ->sortable(),
 
                 TextColumn::make('mois')
@@ -170,16 +176,20 @@ class PaieResource extends Resource
                     ->searchable()
                     ->sortable(),
 
+                // 👇 OPTIMISATION 2 : Alignement Comptable (à droite)
                 TextColumn::make('salaire_brut')
                     ->money('mad')
                     ->label('Brut')
+                    ->alignment(Alignment::End)
                     ->sortable(),
 
+                // 👇 OPTIMISATION 2 : Alignement Comptable (à droite)
                 TextColumn::make('net_a_payer')
                     ->money('mad')
                     ->weight('bold')
                     ->color('success')
                     ->label('Net à Payer')
+                    ->alignment(Alignment::End)
                     ->sortable(),
 
                 TextColumn::make('statut')
@@ -193,13 +203,9 @@ class PaieResource extends Resource
                     ->searchable()
                     ->sortable(),
             ])
+            // J'ai retiré le SelectFilter de statut d'ici, car tes Onglets font déjà ce travail !
             ->filters([
-                Tables\Filters\SelectFilter::make('statut')
-                    ->options([
-                        'en_attente' => 'En attente',
-                        'paye' => 'Payé',
-                    ])
-                    ->label('Filtrer par statut'),
+                // Tu peux ajouter d'autres filtres plus tard (ex: par département)
             ])
             ->actions([
                 Tables\Actions\Action::make('pdf')
@@ -210,7 +216,10 @@ class PaieResource extends Resource
                     ->openUrlInNewTab(),
 
                 Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                
+                // 👇 OPTIMISATION 3 : Sécurité, on ne supprime pas une fiche payée
+                Tables\Actions\DeleteAction::make()
+                    ->hidden(fn ($record) => $record->statut === 'paye'),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
