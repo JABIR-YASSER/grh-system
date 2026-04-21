@@ -16,6 +16,9 @@ use Filament\Forms\Components\DatePicker;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
+use Filament\Forms\Components\ToggleButtons;
+use Filament\Tables\Actions\Action;
+use Filament\Notifications\Notification;
 
 class EmployeResource extends Resource
 {
@@ -54,6 +57,33 @@ class EmployeResource extends Resource
                                 TextInput::make('email')->email()->required(),
                                 TextInput::make('password')->password()->required(),
                             ]),
+                        ToggleButtons::make('etat_compte') // On lui donne un nom imaginaire pour éviter l'erreur SQL "user"
+                            ->label('Statut du compte')
+                            ->options([
+                                'actif' => 'Actif (En poste)',
+                                'inactif' => 'Inactif (Archivé)',
+                            ])
+                            ->colors([
+                                'actif' => 'success',
+                                'inactif' => 'danger',
+                            ])
+                            ->icons([
+                                'actif' => 'heroicon-m-check-circle',
+                                'inactif' => 'heroicon-m-x-circle',
+                            ])
+                            ->inline()
+                            // 1. On va chercher la valeur dans la table Users
+                            ->formatStateUsing(function ($record) {
+                                return $record?->user?->etat;
+                            })
+                            // 2. On empêche Filament d'essayer de sauver "etat_compte" dans la table employes
+                            ->dehydrated(false) 
+                            // 3. On sauvegarde manuellement dans la table Users après validation
+                            ->afterStateUpdated(function ($record, $state) {
+                                $record->user->update(['etat' => $state]);
+                            })
+                            ->live() // Permet de déclencher afterStateUpdated instantanément
+                            ->required(),
 
                         TextInput::make('matricule')
                             ->required()
@@ -126,7 +156,16 @@ class EmployeResource extends Resource
                 TextColumn::make('date_embauche')
                     ->date('d/m/Y')
                     ->sortable(),
-                    
+                
+                TextColumn::make('user.etat')
+                    ->label('État')
+                    ->badge() // Transforme le texte en badge coloré
+                    ->color(fn (string $state): string => match ($state) {
+                        'actif' => 'success',
+                        'inactif' => 'danger',
+                        default => 'gray',
+                    })
+                    ->formatStateUsing(fn (string $state): string => ucfirst($state)),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -145,6 +184,20 @@ class EmployeResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
+                Action::make('archiver')
+                    ->label('Archiver')
+                    ->icon('heroicon-o-archive-box')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->hidden(fn ($record) => $record->user->etat === 'inactif') // Cache le bouton si déjà archivé
+                    ->action(function ($record) {
+                        $record->user->update(['etat' => 'inactif']);
+                        
+                        Notification::make()
+                            ->title('Employé archivé avec succès')
+                            ->success()
+                            ->send();
+                    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
